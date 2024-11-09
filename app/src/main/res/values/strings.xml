@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name" translatable="false">StarIME</string>
+    <string name="keyboard_name" translatable="false">Star IME</string>
+</resources>
