@@ -6,6 +6,12 @@ android {
     namespace 'com.android.starime'
     compileSdk 34
 
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/java']
+        }
+    }
+
     defaultConfig {
         applicationId "com.android.starime"
         minSdk 28
@@ -21,13 +27,24 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        release {
+            storeFile file('D:\\project\\sign\\Yunaon.jks')
+            storePassword '163.com'
+            keyAlias 'key0'
+            keyPassword '163.com'
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

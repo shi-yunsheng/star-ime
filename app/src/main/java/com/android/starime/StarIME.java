@@ -1,3 +1,16 @@
+/**
+ * StarIME - A custom input method service for Android that handles various input events
+ * through broadcast receivers.
+ *
+ * This IME service provides the following functionality:
+ * - Text input via broadcast messages
+ * - Key event simulation with meta key support
+ * - Editor action handling (search, done, etc.)
+ * - Text clearing capability
+ *
+ * The service uses broadcast receivers to handle different types of input events
+ * and communicates with the Android input system through InputConnection.
+ */
 package com.android.starime;
 
 import android.annotation.SuppressLint;
@@ -7,26 +20,31 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.inputmethodservice.InputMethodService;
 import android.os.Build;
-import android.util.Base64;
 import android.view.InputDevice;
 import android.view.KeyEvent;
+import android.view.KeyCharacterMap;
 import android.view.View;
 import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
+import android.view.inputmethod.EditorInfo;
 
 import androidx.annotation.RequiresApi;
 
-import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 
 public class StarIME extends InputMethodService {
-    private static final String IME_MESSAGE = "STAR_INPUT_TEXT";
-    private static final String IME_CHARS = "STAR_INPUT_CHARS";
-    private static final String IME_KEYCODE = "STAR_INPUT_CODE";
-    private static final String IME_EDITOR_CODE = "STAR_EDITOR_CODE";
-    private static final String IME_MESSAGE_B64 = "STAR_INPUT_B64";
+    // Broadcast action constants for different input operations
+    private static final String IME_INPUT_TEXT = "STAR_INPUT_TEXT";
+    private static final String IME_EDITOR_CODE = "STAR_EDITOR_CODE"; 
     private static final String IME_CLEAR_TEXT = "STAR_CLEAR_TEXT";
     private BroadcastReceiver mReceiver = null;
 
+    /**
+     * Creates and initializes the input view and registers the broadcast receiver.
+     * This method is called when the IME is first displayed.
+     *
+     * @return The created input view instance
+     */
     @RequiresApi(api = Build.VERSION_CODES.TIRAMISU)
     @Override
     public View onCreateInputView() {
@@ -34,11 +52,8 @@ public class StarIME extends InputMethodService {
 
         if (mReceiver == null) {
             IntentFilter filter = new IntentFilter();
-            filter.addAction(IME_MESSAGE);
-            filter.addAction(IME_CHARS);
-            filter.addAction(IME_KEYCODE);
+            filter.addAction(IME_INPUT_TEXT);
             filter.addAction(IME_EDITOR_CODE);
-            filter.addAction(IME_MESSAGE_B64);
             filter.addAction(IME_CLEAR_TEXT);
             mReceiver = new AdbReceiver();
             registerReceiver(mReceiver, filter, Context.RECEIVER_EXPORTED);
@@ -47,6 +62,10 @@ public class StarIME extends InputMethodService {
         return mInputView;
     }
 
+    /**
+     * Performs cleanup by unregistering the broadcast receiver when the IME is destroyed.
+     * This prevents memory leaks and ensures proper resource management.
+     */
     @Override
     public void onDestroy() {
         if (mReceiver != null) {
@@ -55,6 +74,10 @@ public class StarIME extends InputMethodService {
         super.onDestroy();
     }
 
+    /**
+     * Inner class that handles various broadcast events for input processing.
+     * Acts as a central handler for all incoming broadcast messages.
+     */
     private class AdbReceiver extends BroadcastReceiver {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -64,23 +87,30 @@ public class StarIME extends InputMethodService {
             }
 
             String action = intent.getAction();
-            if (IME_MESSAGE.equals(action)) {
-                handleMessage(intent, ic);
-            } else if (IME_CHARS.equals(action)) {
-                handleChars(intent, ic);
-            } else if (IME_KEYCODE.equals(action)) {
-                handleKeyCode(intent, ic);
-            } else if (IME_EDITOR_CODE.equals(action)) {
-                handleEditorCode(intent, ic);
-            } else if (IME_MESSAGE_B64.equals(action)) {
-                handleBase64Message(intent, ic);
-            } else if (IME_CLEAR_TEXT.equals(action)) {
-                handleClearText(ic);
+            switch (Objects.requireNonNull(action)) {
+                case IME_INPUT_TEXT:
+                    handleMessage(intent, ic);
+                    break;
+                case IME_EDITOR_CODE:
+                    handleEditorCode(intent, ic);
+                    break;
+                case IME_CLEAR_TEXT:
+                    handleClearText(ic);
+                    break;
+                default:
+                    break;
             }
         }
 
+        /**
+         * Processes text input and meta key combinations received via broadcast.
+         * Supports both simple text input and complex key combinations with meta states.
+         *
+         * @param intent Intent containing the text to input and/or key codes to simulate
+         * @param ic Current input connection to send events to
+         */
         private void handleMessage(Intent intent, InputConnection ic) {
-            String msg = intent.getStringExtra("msg");
+            String msg = intent.getStringExtra("text");
             if (msg != null) {
                 ic.commitText(msg, 1);
             }
@@ -89,43 +119,48 @@ public class StarIME extends InputMethodService {
             if (metaCodes != null) {
                 String[] codes = metaCodes.split(",");
                 for (int i = 0; i < codes.length - 1; i += 2) {
-                    KeyEvent ke;
+                    KeyEvent keDown;
+                    KeyEvent keUp;
                     if (codes[i].contains("+")) {
                         String[] arrCode = codes[i].split("\\+");
-                        ke = new KeyEvent(
+                        int metaState = Integer.parseInt(arrCode[0]) | Integer.parseInt(arrCode[1]);
+                        keDown = new KeyEvent(
                                 0, 0, KeyEvent.ACTION_DOWN, Integer.parseInt(codes[i + 1]), 0,
-                                Integer.parseInt(arrCode[0]) | Integer.parseInt(arrCode[1]),
-                                0, 0, KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE,
+                                metaState, 0, 0, KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE,
+                                InputDevice.SOURCE_KEYBOARD
+                        );
+                        keUp = new KeyEvent(
+                                0, 0, KeyEvent.ACTION_UP, Integer.parseInt(codes[i + 1]), 0,
+                                metaState, 0, 0, KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE,
                                 InputDevice.SOURCE_KEYBOARD
                         );
                     } else {
-                        ke = new KeyEvent(
+                        keDown = new KeyEvent(
                                 0, 0, KeyEvent.ACTION_DOWN, Integer.parseInt(codes[i + 1]), 0,
                                 Integer.parseInt(codes[i]), 0, 0,
                                 KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE,
                                 InputDevice.SOURCE_KEYBOARD
                         );
+                        keUp = new KeyEvent(
+                                0, 0, KeyEvent.ACTION_UP, Integer.parseInt(codes[i + 1]), 0,
+                                Integer.parseInt(codes[i]), 0, 0,
+                                KeyEvent.FLAG_SOFT_KEYBOARD | KeyEvent.FLAG_KEEP_TOUCH_MODE,
+                                InputDevice.SOURCE_KEYBOARD
+                        );
                     }
-                    ic.sendKeyEvent(ke);
+                    ic.sendKeyEvent(keDown);
+                    ic.sendKeyEvent(keUp);
                 }
             }
         }
 
-        private void handleChars(Intent intent, InputConnection ic) {
-            int[] chars = intent.getIntArrayExtra("chars");
-            if (chars != null) {
-                String msg = new String(chars, 0, chars.length);
-                ic.commitText(msg, 1);
-            }
-        }
-
-        private void handleKeyCode(Intent intent, InputConnection ic) {
-            int code = intent.getIntExtra("code", -1);
-            if (code != -1) {
-                ic.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, code));
-            }
-        }
-
+        /**
+         * Processes editor action codes (e.g., search, done, next) received via broadcast.
+         * Performs the specified editor action on the current input connection.
+         *
+         * @param intent Intent containing the editor action code to perform
+         * @param ic Current input connection to perform the action on
+         */
         private void handleEditorCode(Intent intent, InputConnection ic) {
             int code = intent.getIntExtra("code", -1);
             if (code != -1) {
@@ -133,15 +168,12 @@ public class StarIME extends InputMethodService {
             }
         }
 
-        private void handleBase64Message(Intent intent, InputConnection ic) {
-            String data = intent.getStringExtra("msg");
-            if (data != null) {
-                byte[] b64 = Base64.decode(data, Base64.DEFAULT);
-                String msg = new String(b64, StandardCharsets.UTF_8);
-                ic.commitText(msg, 1);
-            }
-        }
-
+        /**
+         * Handles text clearing requests by removing all text from the current input field.
+         * Uses the InputConnection to determine text boundaries and perform deletion.
+         *
+         * @param ic Current input connection to perform text clearing on
+         */
         private void handleClearText(InputConnection ic) {
             CharSequence curPos = ic.getExtractedText(new ExtractedTextRequest(), 0).text;
             if (curPos != null) {
